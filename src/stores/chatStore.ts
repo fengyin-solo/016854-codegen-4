@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { Conversation, Message, CreateMessageParams } from '../types';
+import type { Conversation, Message, CreateMessageParams, ImportResult } from '../types';
 import { saveConversations, loadConversations } from '../services/storage';
+import {
+  parseConversationExport,
+  validateConversationExport,
+  toImportedConversation,
+} from '../services/conversationTransfer';
 import { generateConversationTitle } from '../utils/formatters';
 
 interface ChatState {
@@ -46,6 +51,13 @@ interface ChatActions {
   clearAllConversations: () => void;
   /** 更新对话标题 */
   updateConversationTitle: (id: string, title: string) => void;
+  /**
+   * 从导出文件文本导入对话
+   * - 先完整解析与校验，任一环节失败都不会改动现有对话（原子性）
+   * - 同一份文件重复导入时按指纹去重，直接定位到已导入的对话（幂等）
+   * - 每次导入生成新的对话 ID，不会覆盖已有对话
+   */
+  importConversation: (raw: string) => ImportResult;
 }
 
 type ChatStore = ChatState & ChatActions;
@@ -334,9 +346,67 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (conv.id !== id) return conv;
         return { ...conv, title };
       });
-      
+
       debouncedSave(conversations);
       return { conversations };
     });
+  },
+
+  importConversation: (raw) => {
+    // 1. 解析 JSON，失败时不改动任何状态
+    const parsed = parseConversationExport(raw);
+    if (!parsed.ok) {
+      return { ok: false, errors: parsed.errors };
+    }
+
+    // 2. 完整校验全部消息，任一失败都不会写入（原子性：全部或没有）
+    const validated = validateConversationExport(parsed.data);
+    if (!validated.ok) {
+      return { ok: false, errors: validated.errors };
+    }
+
+    const { file } = validated;
+
+    // 3. 幂等：同一份文件已导入过时，直接定位到已有对话，不重复创建
+    const existing = get().conversations.find(
+      c => c.importFingerprint === file.fingerprint
+    );
+    if (existing) {
+      set({ activeConversationId: existing.id });
+      return {
+        ok: true,
+        conversationId: existing.id,
+        title: existing.title,
+        messageCount: existing.messages.length,
+        duplicate: true,
+      };
+    }
+
+    // 4. 构建新对话（新 ID，不影响也不覆盖任何已有对话）
+    const conversation = toImportedConversation(file);
+    const conversations = [conversation, ...get().conversations];
+
+    // 5. 先持久化，成功后才提交内存状态；持久化失败则整体放弃，不留半截数据
+    try {
+      saveConversations(conversations);
+    } catch (error) {
+      console.error('Failed to persist imported conversation:', error);
+      return {
+        ok: false,
+        errors: ['保存到本地存储失败，可能是存储空间不足。请清理部分历史对话后重试。'],
+      };
+    }
+
+    set({ conversations, activeConversationId: conversation.id });
+    // 取消此前可能排队中的旧快照保存，避免覆盖刚写入的数据
+    debouncedSave(conversations);
+
+    return {
+      ok: true,
+      conversationId: conversation.id,
+      title: conversation.title,
+      messageCount: conversation.messages.length,
+      duplicate: false,
+    };
   },
 }));

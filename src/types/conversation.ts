@@ -14,6 +14,8 @@ export interface Conversation {
   createdAt: number;
   /** 最后更新时间戳 */
   updatedAt: number;
+  /** 导入来源指纹（仅通过导入生成的对话携带，用于幂等去重） */
+  importFingerprint?: string;
 }
 
 /**

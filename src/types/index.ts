@@ -3,6 +3,7 @@ export * from './message'
 export * from './conversation'
 export * from './config'
 export * from './promptTemplate'
+export * from './conversationTransfer'
 
 // Re-export commonly used types
 export type {
@@ -34,6 +35,21 @@ export type {
   UpdatePromptTemplateParams,
   DefaultCategory,
 } from './promptTemplate'
+
+export type {
+  ExportedMessage,
+  ConversationExportFile,
+  ImportResult,
+  ImportSuccess,
+  ImportFailure,
+  ValidationResult,
+} from './conversationTransfer'
+
+export {
+  CONVERSATION_EXPORT_FORMAT,
+  CONVERSATION_EXPORT_VERSION,
+  MAX_IMPORT_MESSAGES,
+} from './conversationTransfer'
 
 export { AVAILABLE_MODELS, DEFAULT_CONFIG } from './config'
 export { DEFAULT_CATEGORIES, DEFAULT_TEMPLATES } from './promptTemplate'

@@ -10,6 +10,7 @@ interface ConversationListProps {
   activeId: string | null;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
+  onExport: (id: string) => void;
 }
 
 /**
@@ -20,6 +21,7 @@ export function ConversationList({
   activeId,
   onSelect,
   onDelete,
+  onExport,
 }: ConversationListProps) {
   if (conversations.length === 0) {
     return (
@@ -42,6 +44,7 @@ export function ConversationList({
           isActive={conversation.id === activeId}
           onSelect={onSelect}
           onDelete={onDelete}
+          onExport={onExport}
         />
       ))}
     </div>

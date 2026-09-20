@@ -1,6 +1,6 @@
 import React, { memo, useState } from 'react';
 import { Button, Popconfirm } from 'antd';
-import { MessageOutlined, DeleteOutlined } from '@ant-design/icons';
+import { MessageOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { Conversation } from '../../types';
 import { formatRelativeTime, truncateText } from '../../utils/formatters';
 import './ConversationItem.css';
@@ -10,6 +10,7 @@ interface ConversationItemProps {
   isActive: boolean;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
+  onExport: (id: string) => void;
 }
 
 /**
@@ -20,6 +21,7 @@ export const ConversationItem = memo(function ConversationItem({
   isActive,
   onSelect,
   onDelete,
+  onExport,
 }: ConversationItemProps) {
   const [showActions, setShowActions] = useState(false);
 
@@ -30,6 +32,11 @@ export const ConversationItem = memo(function ConversationItem({
   const handleDelete = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     onDelete(conversation.id);
+  };
+
+  const handleExport = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onExport(conversation.id);
   };
 
   const lastMessage = conversation.messages[conversation.messages.length - 1];
@@ -59,6 +66,13 @@ export const ConversationItem = memo(function ConversationItem({
       </div>
 
       <div className={`conversation-actions ${showActions ? 'visible' : ''}`}>
+        <Button
+          type="text"
+          size="small"
+          icon={<DownloadOutlined />}
+          title="导出对话"
+          onClick={handleExport}
+        />
         <Popconfirm
           title="删除对话"
           description="确定要删除这个对话吗？"
