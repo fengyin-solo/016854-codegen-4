@@ -1,8 +1,23 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import type { Conversation, Message, CreateMessageParams } from '../types';
+import type { NormalizedImport } from '../utils/conversationTransfer';
 import { saveConversations, loadConversations } from '../services/storage';
 import { generateConversationTitle } from '../utils/formatters';
+
+/**
+ * 导入对话的结果
+ */
+export interface ImportConversationResult {
+  /** 是否成功（重复导入视为成功，只是不再创建新对话） */
+  ok: boolean;
+  /** 目标对话 id（新建或已存在的） */
+  conversationId?: string;
+  /** 是否为重复导入（同一文件之前已导入过） */
+  duplicated?: boolean;
+  /** 失败原因（ok 为 false 时给出） */
+  error?: string;
+}
 
 interface ChatState {
   /** 对话列表 */
@@ -46,6 +61,8 @@ interface ChatActions {
   clearAllConversations: () => void;
   /** 更新对话标题 */
   updateConversationTitle: (id: string, title: string) => void;
+  /** 导入对话（从导出文件还原）。同一文件重复导入不会创建重复对话 */
+  importConversation: (data: NormalizedImport) => ImportConversationResult;
 }
 
 type ChatStore = ChatState & ChatActions;
@@ -334,9 +351,61 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (conv.id !== id) return conv;
         return { ...conv, title };
       });
-      
+
       debouncedSave(conversations);
       return { conversations };
     });
+  },
+
+  importConversation: (data) => {
+    const state = get();
+
+    // 幂等：同一文件（内容指纹相同）已导入过，直接打开已有对话，不重复创建
+    const existing = state.conversations.find(c => c.importFingerprint === data.fingerprint);
+    if (existing) {
+      set({ activeConversationId: existing.id });
+      return { ok: true, duplicated: true, conversationId: existing.id };
+    }
+
+    // 始终生成新的对话 id，绝不覆盖本机已有对话
+    let newId = uuidv4();
+    while (state.conversations.some(c => c.id === newId)) {
+      newId = uuidv4();
+    }
+
+    const newConversation: Conversation = {
+      id: newId,
+      title: data.title,
+      messages: data.messages,
+      createdAt: data.createdAt,
+      updatedAt: Date.now(),
+      importFingerprint: data.fingerprint,
+    };
+
+    const conversations = [newConversation, ...state.conversations];
+
+    // 原子写入：先取消挂起的防抖保存（避免旧快照覆盖导入结果），
+    // 同步持久化成功后才更新内存状态；任何一步失败都整体放弃，不留半截数据
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
+    }
+
+    try {
+      saveConversations(conversations);
+    } catch (error) {
+      console.error('Failed to import conversation:', error);
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : '保存对话失败，请检查存储空间后重试',
+      };
+    }
+
+    set({
+      conversations,
+      activeConversationId: newId,
+    });
+
+    return { ok: true, duplicated: false, conversationId: newId };
   },
 }));

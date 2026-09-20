@@ -14,6 +14,8 @@ export interface Conversation {
   createdAt: number;
   /** 最后更新时间戳 */
   updatedAt: number;
+  /** 导入文件的内容指纹（仅导入还原的对话有值，用于同一文件重复导入时去重） */
+  importFingerprint?: string;
 }
 
 /**
